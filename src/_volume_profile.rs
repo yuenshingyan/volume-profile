@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::error::Error;
-use rayon::prelude::*;
 
 #[pyfunction]
 pub fn compute_volume_profile(
@@ -26,6 +26,7 @@ pub fn compute_volume_profile(
         );
     }
 
+    // Compute minimum and maximum close price and bin width of histogram.
     let mut close_min = 0.0;
     let mut close_max = 0.0;
     for c in &close {
@@ -34,23 +35,28 @@ pub fn compute_volume_profile(
     }
     let bin_width = (close_max - close_min) / bins as f64;
 
-     (0..close.len()).into_par_iter().map(|i| {
-        if i >= window {
-            let histogram = compute_histogram(
-                &close[i - window..i],
-                &volume[i - window..i],
-                bins,
-                bin_width,
-            )
-            .expect("failed to compute histogram");
-            (Some(compute_point_of_control(&histogram)), Some(histogram))
-        } else {
-            (None, None)
-        }
-    }).collect::<(Vec<Option<f64>>, Vec<Option<HashMap<String, Vec<f64>>>>)>()
+    // Compute histogram over a sliding window, and use computed histogram to find the point of control.
+    (0..close.len())
+        .into_par_iter()
+        .map(|i| {
+            if i >= window {
+                let histogram = compute_histogram(
+                    &close[i - window..i],
+                    &volume[i - window..i],
+                    bins,
+                    bin_width,
+                )
+                .expect("failed to compute histogram");
+                (Some(compute_point_of_control(&histogram)), Some(histogram))
+            } else {
+                (None, None)
+            }
+        })
+        .collect::<(Vec<Option<f64>>, Vec<Option<HashMap<String, Vec<f64>>>>)>()
 }
 
 fn compute_point_of_control(histogram: &HashMap<String, Vec<f64>>) -> f64 {
+    // Find middle value of the maximum frequency as point of control.
     let mut max_middle = 0.0;
     for k in histogram.keys() {
         let freq = histogram.get(k).expect("failed to get value from key")[2];
@@ -66,9 +72,14 @@ fn compute_histogram(
     bin_width: f64,
 ) -> Result<HashMap<String, Vec<f64>>, Box<dyn Error>> {
     if close_slice.len() != volume_slice.len() {
-        panic!("Argument 'close_slice' ({}) must share the same length with 'volume_slice' ({})", close_slice.len(), volume_slice.len());
+        panic!(
+            "Argument 'close_slice' ({}) must share the same length with 'volume_slice' ({})",
+            close_slice.len(),
+            volume_slice.len()
+        );
     }
 
+    // loop through all close price and volume, to compute and store the lower bound, upper bound, middle value and sum of volume inside a vector as value. Using interval as key.
     let mut volume_profile = HashMap::<String, Vec<f64>>::new();
     for i in 0..close_slice.len() {
         for n in 1..=bins {
@@ -78,6 +89,7 @@ fn compute_histogram(
             let interval = format!("({}, {})", lower, upper);
 
             if lower <= close_slice[i] && close_slice[i] <= upper {
+                // If interval already exists, obtain and sum existing frequency with the new one. If interval not exists already, store it into a new hashmap.
                 if volume_profile.contains_key(&interval) {
                     let existing_bin = volume_profile
                         .remove(&interval)
@@ -89,7 +101,10 @@ fn compute_histogram(
                     );
                     break;
                 } else {
-                    volume_profile.insert(interval.clone(), vec![lower, upper, middle, volume_slice[i]]);
+                    volume_profile.insert(
+                        interval.clone(),
+                        vec![lower, upper, middle, volume_slice[i]],
+                    );
                     break;
                 }
             }
