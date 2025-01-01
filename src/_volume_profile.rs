@@ -1,29 +1,30 @@
 use pyo3::prelude::*;
+use pyo3::exceptions::PyValueError;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::error::Error;
 
 #[pyfunction]
+#[pyo3(signature = (close, volume, bins=100, window=255))]
 pub fn compute_volume_profile(
     close: Vec<f64>,
     volume: Vec<f64>,
     bins: usize,
     window: usize,
-) -> (Vec<Option<f64>>, Vec<Option<HashMap<String, Vec<f64>>>>) {
+) -> PyResult<(Vec<Option<f64>>, Vec<Option<HashMap<String, Vec<f64>>>>)> {
     if close.len() != volume.len() {
-        panic!(
-            "Lenth of argument `close` ({}) must share the same length with argument `volume` ({})",
-            close.len(),
-            volume.len()
-        );
+        let message = format!("Lenth of argument `close` ({}) must share the same length with argument `volume` ({})", close.len(), volume.len());
+        return Err(PyValueError::new_err(message));
     }
 
     if window > close.len() {
-        panic!(
-            "Argument `window` ({}) must be less than the length of argument `close` ({})",
-            window,
-            close.len()
-        );
+        let message = format!("Argument `window` ({}) must be less than the length of argument `close` ({})", window, close.len());
+        return Err(PyValueError::new_err(message));
+    }
+
+    if window > volume.len() {
+        let message = format!("Argument `window` ({}) must be less than the length of argument `volume` ({})", window, close.len());
+        return Err(PyValueError::new_err(message));
     }
 
     // Compute minimum and maximum close price and bin width of histogram.
@@ -36,7 +37,7 @@ pub fn compute_volume_profile(
     let bin_width = (close_max - close_min) / bins as f64;
 
     // Compute histogram over a sliding window, and use computed histogram to find the point of control.
-    (0..close.len())
+    let (point_of_control, volume_profile) = (0..close.len())
         .into_par_iter()
         .map(|i| {
             if i >= window {
@@ -52,7 +53,8 @@ pub fn compute_volume_profile(
                 (None, None)
             }
         })
-        .collect::<(Vec<Option<f64>>, Vec<Option<HashMap<String, Vec<f64>>>>)>()
+        .collect::<(Vec<Option<f64>>, Vec<Option<HashMap<String, Vec<f64>>>>)>();
+    Ok((point_of_control, volume_profile))
 }
 
 fn compute_point_of_control(histogram: &HashMap<String, Vec<f64>>) -> f64 {
@@ -71,30 +73,30 @@ fn compute_histogram(
     bins: usize,
     bin_width: f64,
 ) -> Result<HashMap<String, Vec<f64>>, Box<dyn Error>> {
-    if close_slice.len() != volume_slice.len() {
-        panic!(
-            "Argument 'close_slice' ({}) must share the same length with 'volume_slice' ({})",
-            close_slice.len(),
-            volume_slice.len()
-        );
-    }
-
-    // loop through all close price and volume, to compute and store the lower bound, upper bound, middle value and sum of volume inside a vector as value. Using interval as key.
     let mut volume_profile = HashMap::<String, Vec<f64>>::new();
     for i in 0..close_slice.len() {
         for n in 1..=bins {
             let lower = n as f64 * bin_width;
             let upper = (n + 1) as f64 * bin_width;
             let middle = (lower + upper) / 2.0;
-            let interval = format!("({}, {})", lower, upper);
 
-            if lower <= close_slice[i] && close_slice[i] <= upper {
-                // If interval already exists, obtain and sum existing frequency with the new one. If interval not exists already, store it into a new hashmap.
+            let interval;
+            if n == 1 {
+                interval = format!("[{}, {})", lower, upper);
+            } else if n == bins {
+                interval = format!("({}, {}]", lower, upper);
+            } else {
+                interval = format!("({}, {})", lower, upper);
+            }
+
+            if lower <= close_slice[i] && close_slice[i] < upper {
                 if volume_profile.contains_key(&interval) {
                     let existing_bin = volume_profile
                         .remove(&interval)
                         .expect("failed to remove 'interval' from 'volume_profile'");
-                    let existing_freq = existing_bin[existing_bin.len() - 1];
+                    let existing_freq = existing_bin
+                        .last()
+                        .expect("failed to obtain existing frequency");
                     volume_profile.insert(
                         interval.clone(),
                         vec![lower, upper, middle, existing_freq + volume_slice[i]],
