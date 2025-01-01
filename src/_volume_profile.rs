@@ -1,5 +1,5 @@
-use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::error::Error;
@@ -13,41 +13,54 @@ pub fn compute_volume_profile(
     window: f64,
 ) -> PyResult<(Vec<Option<f64>>, Vec<Option<HashMap<String, Vec<f64>>>>)> {
     if bins.fract() != 0.0 {
-        let message = format!("Argument `bins` must be integer");
-        return Err(PyValueError::new_err(message));
-    } 
+        return Err(PyValueError::new_err(format!(
+            "Argument `bins` must be integer"
+        )));
+    }
 
     if bins <= 0.0 {
-        let message = format!("Argument `bins` must be greater than 0");
-        return Err(PyValueError::new_err(message));
+        return Err(PyValueError::new_err(format!(
+            "Argument `bins` must be greater than 0"
+        )));
     }
 
     if window.fract() != 0.0 {
-        let message = format!("Argument `window` must be integer");
-        return Err(PyValueError::new_err(message));
-    } 
+        return Err(PyValueError::new_err(format!(
+            "Argument `window` must be integer"
+        )));
+    }
 
     if window <= 0.0 {
-        let message = format!("Argument `window` must be greater than 0");
-        return Err(PyValueError::new_err(message));
+        return Err(PyValueError::new_err(format!(
+            "Argument `window` must be greater than 0"
+        )));
     }
 
     let bins = bins as usize;
     let window = window as usize;
 
     if close.len() != volume.len() {
-        let message = format!("Lenth of argument `close` ({}) must share the same length with argument `volume` ({})", close.len(), volume.len());
-        return Err(PyValueError::new_err(message));
+        return Err(PyValueError::new_err(format!(
+            "Lenth of argument `close` ({}) must share the same length with argument `volume` ({})",
+            close.len(),
+            volume.len()
+        )));
     }
 
     if window > close.len() {
-        let message = format!("Argument `window` ({}) must be less than the length of argument `close` ({})", window, close.len());
-        return Err(PyValueError::new_err(message));
+        return Err(PyValueError::new_err(format!(
+            "Argument `window` ({}) must be less than the length of argument `close` ({})",
+            window,
+            close.len()
+        )));
     }
 
     if window > volume.len() {
-        let message = format!("Argument `window` ({}) must be less than the length of argument `volume` ({})", window, close.len());
-        return Err(PyValueError::new_err(message));
+        return Err(PyValueError::new_err(format!(
+            "Argument `window` ({}) must be less than the length of argument `volume` ({})",
+            window,
+            close.len()
+        )));
     }
 
     // Compute minimum and maximum close price and bin width of histogram.
