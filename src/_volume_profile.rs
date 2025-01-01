@@ -5,13 +5,36 @@ use std::collections::HashMap;
 use std::error::Error;
 
 #[pyfunction]
-#[pyo3(signature = (close, volume, bins=100, window=255))]
+#[pyo3(signature = (close, volume, bins=100.0, window=255.0))]
 pub fn compute_volume_profile(
     close: Vec<f64>,
     volume: Vec<f64>,
-    bins: usize,
-    window: usize,
+    bins: f64,
+    window: f64,
 ) -> PyResult<(Vec<Option<f64>>, Vec<Option<HashMap<String, Vec<f64>>>>)> {
+    if bins.fract() != 0.0 {
+        let message = format!("Argument `bins` must be integer");
+        return Err(PyValueError::new_err(message));
+    } 
+
+    if bins <= 0.0 {
+        let message = format!("Argument `bins` must be greater than 0");
+        return Err(PyValueError::new_err(message));
+    }
+
+    if window.fract() != 0.0 {
+        let message = format!("Argument `window` must be integer");
+        return Err(PyValueError::new_err(message));
+    } 
+
+    if window <= 0.0 {
+        let message = format!("Argument `window` must be greater than 0");
+        return Err(PyValueError::new_err(message));
+    }
+
+    let bins = bins as usize;
+    let window = window as usize;
+
     if close.len() != volume.len() {
         let message = format!("Lenth of argument `close` ({}) must share the same length with argument `volume` ({})", close.len(), volume.len());
         return Err(PyValueError::new_err(message));
